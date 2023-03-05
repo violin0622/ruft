@@ -1,7 +1,7 @@
 use crate::{
     AppendEntriesRequest, AppendEntriesResponse, LogId, RequestVoteRequest, RequestVoteResponse,
 };
-use crate::{Message, Raft, Response, State, Transport};
+use crate::{Raft, Request, Response, State, Transport};
 use std::{collections::HashMap, error::Error};
 use tokio::{
     sync::mpsc::{self, Receiver},
@@ -34,8 +34,8 @@ where
             tokio::select! {
                 _ = sleep(Duration::from_millis(election_timeout)) => self.raft.state = State::Candidate,
                 Some(req) = self.raft.rx.recv() => match req {
-                    Message::AppendEntries(req) => self.raft.handle_append_entries(req).await,
-                    Message::RequestVote(req) => self.raft.handle_request_vote(req).await,
+                    Request::AppendEntries(req) => self.handle_append_entries_request(req).await,
+                    Request::RequestVote(req) => self.handle_request_vote_request(req).await,
                 },
                 Some(rep) = self.raft.rep_rx.recv() => match rep {
                     Response::AppendEntries(_rep) => { unreachable!() },
@@ -53,7 +53,7 @@ where
                     for peer in &self.raft.peers{
                         _ = self.raft.transport.send(
                             *peer,
-                            Message::RequestVote(
+                            Request::RequestVote(
                                 RequestVoteRequest{
                                     term: self.raft.current_term,
                                     candidate_id: self.raft.id,
@@ -69,4 +69,8 @@ where
             }
         }
     }
+
+    async fn handle_append_entries_request(&self, _req: AppendEntriesRequest) {}
+    async fn handle_request_vote_request(&self, _req: RequestVoteRequest) {}
+    async fn gather_votes(&self) {}
 }

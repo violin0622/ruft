@@ -23,7 +23,7 @@ pub trait Persistent {
     fn store() -> Result<(), Box<dyn Error>>;
 }
 
-pub trait Transport: Send + 'static {
+pub trait Transport: Send + Sync + 'static {
     fn send<T>(&self, peer: NodeID, msg: T) -> Result<(), Box<dyn Error>>;
 }
 
@@ -36,7 +36,7 @@ enum State {
 
 type Term = u32;
 
-pub enum Message {
+pub enum Request {
     AppendEntries(AppendEntriesRequest),
     RequestVote(RequestVoteRequest),
 }

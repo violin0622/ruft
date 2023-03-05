@@ -1,7 +1,7 @@
 use crate::Transport;
 use crate::{
     candidate, follower, leader, AppendEntriesRequest, AppendEntriesResponse, Log, LogId, LogIndex,
-    Message, NodeID, RequestVoteRequest, RequestVoteResponse, Response, State, Term,
+    NodeID, Request, RequestVoteRequest, RequestVoteResponse, Response, State, Term,
 };
 use std::{collections::HashMap, error::Error};
 use tokio::{
@@ -36,7 +36,7 @@ pub(crate) struct Raft<T: Transport + Send> {
 
     // client: ruft::raft_client::RaftClient<tonic::transport::Channel>,
     // timeout: std::time::SystemTime,
-    pub rx: mpsc::Receiver<Message>,
+    pub rx: mpsc::Receiver<Request>,
     pub rep_rx: mpsc::Receiver<Response>,
     // append_entries_tx: tokio::sync::mpsc::Sender<AppendEntriesRequest>,
     pub transport: T,

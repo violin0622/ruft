@@ -1,7 +1,7 @@
 use crate::{
     AppendEntriesRequest, AppendEntriesResponse, LogId, RequestVoteRequest, RequestVoteResponse,
 };
-use crate::{Message, Raft, Response, State, Transport};
+use crate::{Raft, Request, Response, State, Transport};
 use std::{collections::HashMap, error::Error};
 use tokio::{
     sync::mpsc::{self, Receiver},
@@ -27,8 +27,8 @@ where
             _ = sleep(Duration::from_millis(1000)) => self.raft.state = State::Candidate,
             Some(req) = self.raft.rx.recv() => match req {
                 // Message::AppendEntries(req) => self.raft.handle_append_entries(req).await,
-                Message::AppendEntries(req) => self.handle_append_entries(req).await,
-                Message::RequestVote(req) => self.raft.handle_request_vote(req).await,
+                Request::AppendEntries(req) => self.handle_append_entries(req).await,
+                Request::RequestVote(req) => self.handle_request_vote(req).await,
             }
         }
     }
@@ -100,4 +100,6 @@ where
             .transport
             .send(req.leader_id, Response::AppendEntries(rep));
     }
+
+    async fn handle_request_vote(&mut self, _req: RequestVoteRequest) {}
 }
