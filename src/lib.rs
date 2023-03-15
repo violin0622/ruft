@@ -41,6 +41,22 @@ enum State {
 
 type Term = u32;
 
+pub enum Message {
+    AppendEntriesReq(AppendEntriesRequest),
+    AppendEntriesRep(AppendEntriesResponse),
+    AskForVoteReq(RequestVoteRequest),
+    AskForVoteRep(RequestVoteResponse),
+}
+
+enum AppendEntries {
+    Req(AppendEntriesRequest),
+    Rep(AppendEntriesResponse),
+}
+enum AskForVote {
+    Req(RequestVoteRequest),
+    Rep(RequestVoteResponse),
+}
+
 pub enum Request {
     AppendEntries(AppendEntriesRequest),
     RequestVote(RequestVoteRequest),

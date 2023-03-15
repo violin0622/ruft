@@ -1,7 +1,7 @@
 use crate::Transport;
 use crate::{
     candidate, follower, leader, AppendEntriesRequest, AppendEntriesResponse, Log, LogId, LogIndex,
-    NodeID, Request, RequestVoteRequest, RequestVoteResponse, Response, State, Term,
+    Message, NodeID, Request, RequestVoteRequest, RequestVoteResponse, Response, State, Term,
 };
 use std::{collections::HashMap, error::Error};
 use tokio::{
@@ -36,8 +36,8 @@ pub(crate) struct Raft<T: Transport + Send> {
 
     // client: ruft::raft_client::RaftClient<tonic::transport::Channel>,
     // timeout: std::time::SystemTime,
-    pub rx: mpsc::Receiver<Request>,
-    pub rep_rx: mpsc::Receiver<Response>,
+    pub in_rx: mpsc::Receiver<Message>,
+    pub out_rx: mpsc::Receiver<Response>,
     // append_entries_tx: tokio::sync::mpsc::Sender<AppendEntriesRequest>,
     pub transport: T,
     pub election_timeout: u64,
@@ -45,8 +45,8 @@ pub(crate) struct Raft<T: Transport + Send> {
 
 impl<T: Transport + Send> Raft<T> {
     pub async fn new(transport: T) -> Self {
-        let (_tx, rx) = tokio::sync::mpsc::channel(0);
-        let (_tx, rep_rx) = tokio::sync::mpsc::channel(0);
+        let (_in_tx, in_rx) = tokio::sync::mpsc::channel(0);
+        let (_out_tx, out_rx) = tokio::sync::mpsc::channel(0);
         Self {
             id: 0,
             peers: vec![],
@@ -63,8 +63,8 @@ impl<T: Transport + Send> Raft<T> {
             //     .await
             //     .unwrap(),
             // timeout: std::time::SystemTime::now(),
-            rx,
-            rep_rx,
+            in_rx,
+            out_rx,
             // append_entries_tx: tx,
             transport,
             election_timeout: 0,

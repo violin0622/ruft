@@ -1,5 +1,6 @@
 use crate::{
-    AppendEntriesRequest, AppendEntriesResponse, LogId, RequestVoteRequest, RequestVoteResponse,
+    AppendEntriesRequest, AppendEntriesResponse, LogId, Message, RequestVoteRequest,
+    RequestVoteResponse,
 };
 use crate::{Raft, Request, Response, State, Transport};
 use std::{collections::HashMap, error::Error};
@@ -25,15 +26,16 @@ where
     pub async fn run(mut self) {
         tokio::select! {
             _ = sleep(Duration::from_millis(1000)) => self.raft.state = State::Candidate,
-            Some(req) = self.raft.rx.recv() => match req {
-                // Message::AppendEntries(req) => self.raft.handle_append_entries(req).await,
-                Request::AppendEntries(req) => self.handle_append_entries(req).await,
-                Request::RequestVote(req) => self.handle_request_vote(req).await,
+            Some(req) = self.raft.in_rx.recv() => match req {
+                Message::AppendEntriesReq(msg) => self.handle_append_entries_request(msg).await,
+                Message::AppendEntriesRep(msg) => self.handle_append_entries_response(msg).await,
+                Message::AskForVoteReq(msg) => self.handle_request_vote_request(msg).await,
+                Message::AskForVoteRep(msg) => self.handle_request_vote_response(msg).await,
             }
         }
     }
 
-    async fn handle_append_entries(&mut self, mut req: AppendEntriesRequest) {
+    async fn handle_append_entries_request(&mut self, mut req: AppendEntriesRequest) {
         let mut rep = AppendEntriesResponse::default();
         if self.raft.current_term > req.term {
             rep.term = self.raft.current_term;
@@ -101,5 +103,7 @@ where
             .send(req.leader_id, Response::AppendEntries(rep));
     }
 
-    async fn handle_request_vote(&mut self, _req: RequestVoteRequest) {}
+    async fn handle_append_entries_response(&mut self, rep: AppendEntriesResponse) {}
+    async fn handle_request_vote_request(&mut self, _req: RequestVoteRequest) {}
+    async fn handle_request_vote_response(&mut self, _req: RequestVoteResponse) {}
 }
