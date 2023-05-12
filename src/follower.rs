@@ -103,7 +103,22 @@ where
             .send(req.leader_id, Response::AppendEntries(rep));
     }
 
+    // 作为随从，不会发送该消息，如果收到该消息，有可能是之前作为首领发送的消息，但是由于网络原因
+    // 未能及时收到，此时应该忽略该消息
     async fn handle_append_entries_response(&mut self, rep: AppendEntriesResponse) {}
+
+    // 当收到 RequestVote 请求时，说明有某个成员发起了选举。
+    // 1. 如果该成员的任期小于当前任期，说明该成员的选举已经过期，直接拒绝
+    // 2. 如果该成员的任期大于当前任期，说明该成员的选举更加新，更新当前任期，然后拒绝
+    // 3. 如果该成员的任期等于当前任期，说明该成员的选举和当前任期一样新，比较日志
+    //   3.1 如果该成员的日志比当前成员的日志新，拒绝
+    //   3.2 如果该成员的日志比当前成员的日志旧，同意
+    //   3.3 如果该成员的日志和当前成员的日志一样新，比较 id
+    //   3.3.1 如果该成员的 id 比当前成员的 id 大，拒绝
+    //   3.3.2 如果该成员的 id 比当前成员的 id 小，同意
+    //   3.3.3 如果该成员的 id 和当前成员的 id 一样大，拒绝
+    //   3.3.4 如果该成员的 id 和当前成员的 id 一样小，同意
+    //   3.3.5 如果该成员的 id 和当前成员的 id 一样，同意
     async fn handle_request_vote_request(&mut self, _req: RequestVoteRequest) {}
     async fn handle_request_vote_response(&mut self, _req: RequestVoteResponse) {}
 }
