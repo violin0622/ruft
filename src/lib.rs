@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
-#![feature(async_fn_in_trait)]
 tonic::include_proto!("mod");
 
 use ruft::{

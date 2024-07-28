@@ -34,8 +34,58 @@ where
             }
         }
     }
+    fn maybe_update_term(&mut self, term: u32) {
+        if self.raft.current_term < term {
+            self.raft.current_term = term;
+            self.raft.state = State::Follower;
+        }
+    }
 
+    /* HandleAppendEntriesRequest(i,j,m) ==
+         LET logOk == \/ m.mprevLogIndex = 0
+                      \/ /\ m.prevLogIndex > 0
+                         /\ m.prevLogIndex <= Len(log[i])
+                         /\ m.prevLogTerm = log[i][m.mprevLogIndex].term
+         IN /\ m.mterm <= currentTerm[i]
+            /\ \/ /\ \/ m.mterm < currentTerm[i]
+                     \/ /\ m.mterm = currentTerm[i]
+                        /\ state[i] = Follower
+                        /\ \not logOk
+                  /\ Reply([
+                       mtype       |-> AppendEntriesResponse,
+                       mterm       |-> currentTerm[i],
+                       msucc       |-> FALSE,
+                       mmatchIndex |-> 0,
+                       msource     |-> i,
+                       mdest       |-> j,
+                     ], m)
+                  /\ UNCHANGED <<serverVars, logVars>>
+               \/ \* return to follwer state.
+                  /\ m.mterm = currentTerm[i]
+                  /\ state[i] = Candidate
+                  /\ state' = [state EXCEPT ![i] = Follower]
+                  /\ UNCHANGED <<currrentTerm, votedFor, logVars, messages>>
+               \/ \* accept request
+                  /\ m.mterm = currentTerm[i]
+                  /\ state[i] = Follower
+                  /\ logOk
+                  /\ LET index == m.mprevLogIndex + 1
+                     IN \/ \* already done with request
+                           /\ \/ m.mentries = <<>>
+                              \/  /\ m.mentries /= <<>>
+                                  /\ Len(log[i]) >= index
+                                  /\ log[i][index].term = m.mentries[1].term
+            /\ UNCHANGED <<candidateVars, leaderVars>>
+    */
     async fn handle_append_entries_request(&mut self, mut req: AppendEntriesRequest) {
+        self.maybe_update_term(req.term);
+        let logOk = || {
+            req.prev_log.map_or(true, |log| {
+                log.index > 0
+                    && log.index as usize <= self.raft.logs.len()
+                    && log.term == self.raft.logs[log.index as usize].id.unwrap().term
+            })
+        };
         let mut rep = AppendEntriesResponse::default();
         if self.raft.current_term > req.term {
             rep.term = self.raft.current_term;
