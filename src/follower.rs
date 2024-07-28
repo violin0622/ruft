@@ -44,25 +44,22 @@ where
                 .raft
                 .transport
                 .send(req.leader_id, Response::AppendEntries(rep));
-            // return false
             return;
-        } else if req.term > self.raft.current_term {
+        }
+        if req.term > self.raft.current_term {
             self.raft.current_term = req.term;
         }
         rep.term = self.raft.current_term;
 
-        let mut idx = self.raft.logs.len() - 1;
-        let matched;
-        let prev_log = req.prev_log.unwrap();
-        loop {
-            let log_id = self.raft.logs[idx].id.clone().unwrap();
-            if log_id.term == prev_log.term && log_id.index == prev_log.index {
-                matched = true;
-                break;
-            }
-            idx -= 1;
-        }
-        if !matched {
+        let matched_log = self
+            .raft
+            .logs
+            .iter()
+            .rfind(|&&log| match (log.id, req.prev_log) {
+                (Some(id), Some(prev_log_id)) => id == prev_log_id,
+                _ => false,
+            });
+        if None == matched_log {
             _ = self
                 .raft
                 .transport
@@ -72,6 +69,10 @@ where
 
         // 如果一个已经存在的条目和新条目冲突（索引相同， 任期不同），则将本地在该条目及其之后的所
         // 有日志条目删除
+        // 本地储存的所有日志条目的任期，都小于等于最后一条日志的任期。
+        // 如果最后一条日志的任期都小于等于请求中的任期，则所有日志的任期都小于等于请求中的任期。
+        // 索引相同，任期不同；
+        // 任期相同，索引不同；
         idx = self.raft.logs.len() - 1;
         let conflict;
         loop {

@@ -48,10 +48,6 @@ pub enum Message {
     AskForVoteRep(RequestVoteResponse),
 }
 
-enum AppendEntries {
-    Req(AppendEntriesRequest),
-    Rep(AppendEntriesResponse),
-}
 enum AskForVote {
     Req(RequestVoteRequest),
     Rep(RequestVoteResponse),

@@ -1,5 +1,5 @@
 use crate::{
-    AppendEntries, AppendEntriesRequest, AppendEntriesResponse, LogId, Message, RequestVoteRequest,
+    AppendEntriesRequest, AppendEntriesResponse, LogId, Message, RequestVoteRequest,
     RequestVoteResponse,
 };
 use crate::{Raft, Request, Response, State, Transport};
