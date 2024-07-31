@@ -41,25 +41,34 @@ where
         };
     }
 
-    // 如果一段时间时间内
+    // 如果一段时间时间内没有新的日志，则向所有随从发送空的 AppendEntries 作为心跳。
+    // send 只是个发送动作，它不应该失败。如果真的出现了不可恢复的错误，那么就 panic。
     async fn send_append_entries_as_heartbeat(&self) {
         for peer in &self.raft.peers {
-            _ = self.raft.transport.send(
-                *peer,
-                Request::AppendEntries(AppendEntriesRequest {
-                    term: self.raft.current_term,
-                    leader_id: self.raft.id,
-                    prev_log: Some(LogId {
+            self.raft
+                .transport
+                .send(
+                    *peer,
+                    Request::AppendEntries(AppendEntriesRequest {
                         term: self.raft.current_term,
-                        index: self.raft.new_log_index - 1,
+                        leader_id: self.raft.id,
+                        prev_log: Some(LogId {
+                            term: self.raft.current_term,
+                            index: self.raft.new_log_index - 1,
+                        }),
+                        entries: vec![],
+                        leader_committed_index: 0,
                     }),
-                    entries: vec![],
-                    leader_committed_index: 0,
-                }),
-            );
+                )
+                .expect("Send heartbeat");
         }
     }
 
+    // 收到 append_entries 响应有几种情况：
+    // 1. 收到了来自当前任期的响应，那么就更新随从的 next_index 和 match_index。
+    // 2. 收到了来自上一任期的响应，那么就忽略。
+    // 3. 收到了来自下一任期的响应，那么就转换为跟随者。
+    // 4. 收到了来自当前任期的响应，但是随从的日志不匹配，那么就减小 next_index 重试。
     async fn handle_append_entries_response(&self, _rep: AppendEntriesResponse) {}
     async fn handle_request_vote_response(&self, _rep: RequestVoteResponse) {}
     async fn handle_append_entries_request(&self, _req: AppendEntriesRequest) {}
