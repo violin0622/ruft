@@ -1,5 +1,6 @@
 use crate::{
-    AppendEntriesRequest, AppendEntriesResponse, LogId, RequestVoteRequest, RequestVoteResponse,
+    AppendEntries, AppendEntriesRequest, AppendEntriesResponse, LogId, Message, RequestVoteRequest,
+    RequestVoteResponse,
 };
 use crate::{Raft, Request, Response, State, Transport};
 use std::{collections::HashMap, error::Error};
@@ -29,15 +30,13 @@ where
         tokio::select! {
             _ = interval.tick() => self.send_append_entries_as_heartbeat().await,
 
-            Some(req) = self.raft.rx.recv() => match req {
-                Request::AppendEntries(_req) => self.handle_append_entries_request(_req).await,
-                Request::RequestVote(_req) => self.handle_request_vote_request(_req).await,
+            Some(req) = self.raft.in_rx.recv() => match req {
+                Message::AppendEntriesReq(msg) => self.handle_append_entries_request(msg).await,
+                Message::AppendEntriesRep(msg) => self.handle_append_entries_response(msg).await,
+                Message::AskForVoteReq(msg) => self.handle_request_vote_request(msg).await,
+                Message::AskForVoteRep(msg) => self.handle_request_vote_response(msg).await,
             },
 
-            Some(rep) = self.raft.rep_rx.recv() => match rep {
-                Response::AppendEntries(_rep) => self.handle_append_entries_response(_rep).await,
-                Response::RequestVote(_rep) => self.handle_request_vote_response(_rep).await,
-            },
             // 作为首领，还必须负责处理客户端的提案， 提案也通过 channel 传递。
         };
     }
