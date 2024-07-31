@@ -41,41 +41,69 @@ where
         }
     }
 
-    /* HandleAppendEntriesRequest(i,j,m) ==
-         LET logOk == \/ m.mprevLogIndex = 0
-                      \/ /\ m.prevLogIndex > 0
-                         /\ m.prevLogIndex <= Len(log[i])
-                         /\ m.prevLogTerm = log[i][m.mprevLogIndex].term
-         IN /\ m.mterm <= currentTerm[i]
-            /\ \/ /\ \/ m.mterm < currentTerm[i]
-                     \/ /\ m.mterm = currentTerm[i]
-                        /\ state[i] = Follower
-                        /\ \not logOk
-                  /\ Reply([
-                       mtype       |-> AppendEntriesResponse,
-                       mterm       |-> currentTerm[i],
-                       msucc       |-> FALSE,
-                       mmatchIndex |-> 0,
-                       msource     |-> i,
-                       mdest       |-> j,
-                     ], m)
-                  /\ UNCHANGED <<serverVars, logVars>>
-               \/ \* return to follwer state.
-                  /\ m.mterm = currentTerm[i]
-                  /\ state[i] = Candidate
-                  /\ state' = [state EXCEPT ![i] = Follower]
-                  /\ UNCHANGED <<currrentTerm, votedFor, logVars, messages>>
-               \/ \* accept request
-                  /\ m.mterm = currentTerm[i]
-                  /\ state[i] = Follower
-                  /\ logOk
-                  /\ LET index == m.mprevLogIndex + 1
-                     IN \/ \* already done with request
-                           /\ \/ m.mentries = <<>>
-                              \/  /\ m.mentries /= <<>>
-                                  /\ Len(log[i]) >= index
-                                  /\ log[i][index].term = m.mentries[1].term
-            /\ UNCHANGED <<candidateVars, leaderVars>>
+    /**
+    ```tla+
+    HandleAppendEntriesRequest(i,j,m) ==
+        LET logOk == \/ m.mprevLogIndex = 0
+                     \/ /\ m.prevLogIndex > 0
+                        /\ m.prevLogIndex <= Len(log[i])
+                        /\ m.prevLogTerm = log[i][m.mprevLogIndex].term
+        IN /\ m.mterm <= currentTerm[i]
+           /\ \/ /\ \/ m.mterm < currentTerm[i]
+                    \/ /\ m.mterm = currentTerm[i]
+                       /\ state[i] = Follower
+                       /\ \not logOk
+                 /\ Reply([
+                      mtype       |-> AppendEntriesResponse,
+                      mterm       |-> currentTerm[i],
+                      msucc       |-> FALSE,
+                      mmatchIndex |-> 0,
+                      msource     |-> i,
+                      mdest       |-> j,
+                    ], m)
+                 /\ UNCHANGED <<serverVars, logVars>>
+              \/ \* return to follwer state.
+                 /\ m.mterm = currentTerm[i]
+                 /\ state[i] = Candidate
+                 /\ state' = [state EXCEPT ![i] = Follower]
+                 /\ UNCHANGED <<currrentTerm, votedFor, logVars, messages>>
+              \/ \* accept request
+                 /\ m.mterm = currentTerm[i]
+                 /\ state[i] = Follower
+                 /\ logOk
+                 /\ LET index == m.mprevLogIndex + 1
+                    IN \/ \* already done with request
+                          /\ \/ m.mentries = <<>>
+                             \/  /\ m.mentries /= <<>>
+                                 /\ Len(log[i]) >= index
+                                 /\ log[i][index].term = m.mentries[1].term
+                             \* This could make our commitIndex decrease (for
+                             \* example if we process an old, duplicated request),
+                             \* but that doesn't really affect anything.
+                          /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
+                          /\ Reply([mtype    |-> AppendEntriesResponse,
+                             mterm           |-> currentTerm[i],
+                             msuccess        |-> TRUE,
+                             mmatchIndex     |-> m.mprevLogIndex + Len(m.mentries),
+                             msource         |-> i,
+                             mdest           |-> j], m)
+                          /\ UNCHANGED <<serverVars, log>>
+              \/ \* conflict: remove 1 entry
+                 /\ m.mentries /= << >>
+                 /\ Len(log[i]) >= index
+                 /\ log[i][index].term /= m.mentries[1].term
+                 /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |->
+                                    log[i][index2]]
+                    IN log' = [log EXCEPT ![i] = new]
+                 /\ UNCHANGED <<serverVars, commitIndex, messages>>
+              \/ \* no conflict: append entry
+                 /\ m.mentries /= << >>
+                 /\ len(log[i]) = m.mprevlogindex
+                 /\ log' = [log except ![i] =
+                                append(log[i], m.mentries[1])]
+                 /\ unchanged <<servervars, commitindex, messages>>
+           /\ UNCHANGED <<candidateVars, leaderVars>>
+    ```
     */
     async fn handle_append_entries_request(&mut self, mut req: AppendEntriesRequest) {
         self.maybe_update_term(req.term);
