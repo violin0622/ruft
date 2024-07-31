@@ -61,8 +61,8 @@ where
         }
     }
 
-    async fn handle_append_entries_response(&self, rep: AppendEntriesResponse) {}
-    async fn handle_request_vote_response(&self, rep: RequestVoteResponse) {}
-    async fn handle_append_entries_request(&self, req: AppendEntriesRequest) {}
-    async fn handle_request_vote_request(&self, req: RequestVoteRequest) {}
+    async fn handle_append_entries_response(&self, _rep: AppendEntriesResponse) {}
+    async fn handle_request_vote_response(&self, _rep: RequestVoteResponse) {}
+    async fn handle_append_entries_request(&self, _req: AppendEntriesRequest) {}
+    async fn handle_request_vote_request(&self, _req: RequestVoteRequest) {}
 }
