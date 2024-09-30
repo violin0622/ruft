@@ -1,3 +1,4 @@
+use crate::leader::LeaderFn;
 use crate::Transport;
 use crate::{
     candidate, follower, leader, AppendEntriesRequest, AppendEntriesResponse, Log, LogId, LogIndex,
@@ -8,6 +9,7 @@ use tokio::{
     sync::mpsc::{self, Receiver},
     time::{self, sleep, timeout, Duration},
 };
+use tonic::{IntoRequest, Response};
 
 pub(crate) struct Raft<T: Transport + Send> {
     // persistent
@@ -71,7 +73,104 @@ impl<T: Transport + Send> Raft<T> {
         }
     }
 
-    pub async fn handle_append_entries(&mut self, _req: AppendEntriesRequest) {}
+    fn maybe_update_term(&mut self, term: u32) {
+        if self.current_term < term {
+            self.current_term = term;
+            self.state = State::Follower;
+        }
+    }
+
+    pub async fn handle_append_entries_as_follower(&mut self, req: AppendEntriesRequest) {
+        self.maybe_return_to_follower(req.term);
+
+        let mut rep = AppendEntriesResponse::default();
+        rep.term = self.current_term;
+        if self.current_term > req.term {
+            _ = self
+                .transport
+                .send(req.leader_id, Response::AppendEntries(rep));
+            return;
+        }
+        let log_ok = req.prev_log.map_or(true, |log| {
+            let idx = log.index as usize;
+            idx > 0
+                && idx <= self.logs.len()
+                && self.logs[idx].id.is_some_and(|id| id.term == log.term)
+        });
+
+        if !log_ok {
+            _ = self
+                .transport
+                .send(req.leader_id, Response::AppendEntries(rep));
+            return;
+        }
+
+        if req.entries.len() == 0 {
+            rep.success = true;
+            self.committed_log_index = req.leader_committed_index;
+            _ = self
+                .transport
+                .send(req.leader_id, Response::AppendEntries(rep));
+            return;
+        }
+
+        let Some(LogId {
+            term: _prev_term,
+            index: prev_idx,
+        }) = req.prev_log
+        else {
+            _ = self
+                .transport
+                .send(req.leader_id, Response::AppendEntries(rep));
+            return;
+        };
+        let prev_idx = prev_idx as usize;
+
+        if self.logs.len() >= prev_idx + 1 {
+            match (self.logs[prev_idx].id, req.entries[0].id) {
+                // \/ /\ m.mentries /= <<>>
+                //    /\ Len(log[i]) >= index
+                //    /\ log[i][index].term = m.mentries[1].term
+                (Some(term1), Some(term2)) if term1 == term2 => {
+                    self.committed_log_index = req.leader_committed_index;
+                    rep.success = true;
+                    rep.term = self.current_term;
+                    _ = self
+                        .transport
+                        .send(req.leader_id, Response::AppendEntries(rep));
+                }
+
+                // /\ m.mentries /= << >>
+                // /\ Len(log[i]) >= index
+                // /\ log[i][index].term /= m.mentries[1].term
+                // /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |->
+                //                    log[i][index2]]
+                //    IN log' = [log EXCEPT ![i] = new]
+                // /\ UNCHANGED <<serverVars, commitIndex, messages>>
+                (Some(_), Some(_)) => {
+                    self.logs.truncate(prev_idx + 1);
+                    rep.term = self.current_term;
+                    _ = self
+                        .transport
+                        .send(req.leader_id, Response::AppendEntries(rep));
+                }
+                _ => unreachable!("both self and req should have log term"),
+            }
+        }
+
+        self.logs.append(req.entries.clone().as_mut());
+        rep.success = true;
+        rep.term = self.current_term;
+        _ = self
+            .transport
+            .send(req.leader_id, Response::AppendEntries(rep));
+    }
+
+    fn maybe_return_to_follower(&mut self, term: u32) {
+        if self.state == State::Candidate && self.logs.last().unwrap().id.unwrap().term == term {
+            self.state = State::Follower
+        }
+    }
 
     // if self state is follower, then turn to candidate
     // if req.logID >= self.logID, then reply ok
@@ -79,13 +178,29 @@ impl<T: Transport + Send> Raft<T> {
 
     pub fn stop(self) {}
 
-    pub async fn start(mut self) {
+    pub fn start(mut self) {
         tokio::spawn(async move {
             loop {
-                match &self.state {
-                    State::Leader => leader::LeaderFn::new(&mut self).run().await,
-                    State::Candidate => candidate::CandidateFn::new(&mut self).run().await,
-                    State::Follower => follower::FollowerFn::new(&mut self).run().await,
+                tokio::select! {
+                    _ = sleep(Duration::from_millis(1000)) => self.state = State::Candidate,
+                    Some(msg) = self.in_rx.recv() => {
+                    // if let Some(msg) = self.in_rx.recv().await {
+                        match self.state {
+                            State::Leader => LeaderFn::new(&mut self).run().await,
+                            State::Candidate => candidate::CandidateFn::new(&mut self).run().await,
+                            State::Follower => match msg {
+                                Message::AppendEntriesReq(req) => {
+                                    self.maybe_update_term(req.term);
+                                    self.handle_append_entries_as_follower(req);
+                                }
+                                Message::AppendEntriesRep(req) => {
+                                    self.maybe_update_term(req.term);
+                                }
+                                Message::AskForVoteReq(req) => self.maybe_update_term(req.term),
+                                Message::AskForVoteRep(req) => self.maybe_update_term(req.term),
+                            },
+                        }
+                    }
                 }
             }
         });

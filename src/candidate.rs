@@ -30,6 +30,8 @@ where
         }
     }
 
+    pub async fn req(&self, req: Request) {}
+
     // 向所有 Peers 送 request_vote 请求, 收到过半则转变为 Leader;
     // 收到新的 append_entries 则转变为 Follower;
     // 超时则开启新任期

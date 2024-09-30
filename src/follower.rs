@@ -41,6 +41,14 @@ where
         }
     }
 
+    fn maybe_return_to_follower(&mut self, term: u32) {
+        if self.raft.state == State::Candidate
+            && self.raft.logs.last().unwrap().id.unwrap().term == term
+        {
+            self.raft.state = State::Follower
+        }
+    }
+
     /**
     ```tla+
     HandleAppendEntriesRequest(i,j,m) ==
@@ -92,22 +100,20 @@ where
                  /\ m.mentries /= << >>
                  /\ Len(log[i]) >= index
                  /\ log[i][index].term /= m.mentries[1].term
-                 /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |->
-                                    log[i][index2]]
+                 /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |-> log[i][index2]]
                     IN log' = [log EXCEPT ![i] = new]
                  /\ UNCHANGED <<serverVars, commitIndex, messages>>
               \/ \* no conflict: append entry
                  /\ m.mentries /= << >>
                  /\ len(log[i]) = m.mprevlogindex
-                 /\ log' = [log except ![i] =
-                                append(log[i], m.mentries[1])]
+                 /\ log' = [log except ![i] = append(log[i], m.mentries[1])]
                  /\ unchanged <<servervars, commitindex, messages>>
            /\ UNCHANGED <<candidateVars, leaderVars>>
     ```
     */
     async fn handle_append_entries_request(&mut self, mut req: AppendEntriesRequest) {
         self.maybe_update_term(req.term);
-        let logOk = || {
+        let log_ok = || {
             req.prev_log.map_or(true, |log| {
                 log.index > 0
                     && log.index as usize <= self.raft.logs.len()
@@ -129,21 +135,22 @@ where
         }
         rep.term = self.raft.current_term;
 
-        let matched_log = self
-            .raft
-            .logs
-            .iter()
-            .rfind(|&&log| match (log.id, req.prev_log) {
-                (Some(id), Some(prev_log_id)) => id == prev_log_id,
-                _ => false,
-            });
-        if None == matched_log {
-            _ = self
-                .raft
-                .transport
-                .send(req.leader_id, Response::AppendEntries(rep));
-            return;
-        }
+        if self.raft.logs.len() > (req.prev_log.unwrap().index + 1) as usize {}
+        // let matched_log = self
+        //     .raft
+        //     .logs
+        //     .iter()
+        //     .rfind(|&&log| match (log.id, req.prev_log) {
+        //         (some(id), some(prev_log_id)) => id == prev_log_id,
+        //         _ => false,
+        //     });
+        // if none == matched_log {
+        //     _ = self
+        //         .raft
+        //         .transport
+        //         .send(req.leader_id, response::appendentries(rep));
+        //     return;
+        // }
 
         // 如果一个已经存在的条目和新条目冲突（索引相同， 任期不同），则将本地在该条目及其之后的所
         // 有日志条目删除
@@ -151,19 +158,19 @@ where
         // 如果最后一条日志的任期都小于等于请求中的任期，则所有日志的任期都小于等于请求中的任期。
         // 索引相同，任期不同；
         // 任期相同，索引不同；
-        idx = self.raft.logs.len() - 1;
-        let conflict;
-        loop {
-            let log_id = self.raft.logs[idx].id.clone().unwrap();
-            if log_id.index == prev_log.index {
-                conflict = true;
-                break;
-            }
-            idx -= 1;
-        }
-        if conflict {
-            self.raft.logs.drain(idx..);
-        }
+        // let idx = self.raft.logs.len() - 1;
+        // let conflict;
+        // loop {
+        //     let log_id = self.raft.logs[idx].id.clone().unwrap();
+        //     if log_id.index == prev_log.index {
+        //         conflict = true;
+        //         break;
+        //     }
+        //     idx -= 1;
+        // }
+        // if conflict {
+        //     self.raft.logs.drain(idx..);
+        // }
 
         // 追加所有新日志条目
         self.raft.logs.append(req.entries.as_mut());

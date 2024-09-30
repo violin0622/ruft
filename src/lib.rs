@@ -28,7 +28,11 @@ pub trait Transport: Send + Sync + 'static {
 }
 
 pub trait AsyncTransport: Send + Sync + 'static {
-    async fn send<Q, P>(&self, peer: NodeID, msg: Q) -> Result<P, Box<dyn Error>>;
+    fn send<Q, P>(
+        &self,
+        peer: NodeID,
+        msg: Q,
+    ) -> impl std::future::Future<Output = Result<P, Box<dyn Error>>> + Send;
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
